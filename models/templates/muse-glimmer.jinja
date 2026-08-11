@@ -81,7 +81,16 @@
     {{- '</atem:invoke>\n</atem:function_calls>' -}}
 {%- endmacro -%}
 {%- macro render_reasoning() -%}
-    {%- set rs = reasoning_strength if reasoning_strength is defined and reasoning_strength else 'high' -%}
+    {%- set raw = reasoning_effort if reasoning_effort is defined else 'high' -%}
+    {%- if raw in ['minimal','low'] -%}
+        {%- set rs = 'low' -%}
+    {%- elif raw == 'medium' -%}
+        {%- set rs = 'medium' -%}
+    {%- elif raw in ['xhigh','max'] -%}
+        {%- set rs = 'xhigh' -%}
+    {%- else -%}
+        {%- set rs = 'high' -%}
+    {%- endif -%}
     {{- 'Reasoning strength: ' + rs + '.' -}}
 {%- endmacro -%}
 {%- macro render_system_meta(tools) -%}

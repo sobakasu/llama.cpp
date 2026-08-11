@@ -37,6 +37,14 @@
     {%- set is_training = false %}
 {%- endif %}
 
+{%- if reasoning_effort is defined %}
+    {%- if reasoning_effort == 'minimal' or reasoning_effort == 'low' -%}
+        {%- set reasoning_effort = 'low' -%}
+    {%- elif reasoning_effort in ['medium','high','xhigh','max'] -%}
+        {%- set reasoning_effort = 'high' -%}
+    {%- endif %}
+{%- endif %}
+
 {%- if not reasoning_effort is defined %}
     {%- set reasoning_effort = 'no_think' %}
 {%- elif reasoning_effort not in ['high', 'low', 'no_think'] %}

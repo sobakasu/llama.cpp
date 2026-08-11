@@ -1250,7 +1250,7 @@ The `response_format` parameter supports both plain JSON output (e.g. `{"type": 
 
 `chat_template_kwargs`: Allows sending additional parameters to the json templating system. For example: `{"enable_thinking": false}`
 
-`reasoning_effort`: If set to `none`, reasoning will be disabled for this request. Other values (e.g., `low`, `max`) have no effect on reasoning.
+`reasoning_effort`: If set to `none`, reasoning/thinking is disabled for this request. Other values e.g. `minimal`, `low`, `medium`, `high`, `xhigh`, `max` are passed to the chat template as extra context `reasoning_effort` for model-specific handling. Also accepts the nested form `reasoning.effort`.
 
 `reasoning_format`: The reasoning format to be parsed. If set to `none`, it will output the raw generated text.
 

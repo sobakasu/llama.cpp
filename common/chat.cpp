@@ -3433,6 +3433,9 @@ static common_chat_params common_chat_templates_apply_jinja(const struct common_
     for (auto el : inputs.chat_template_kwargs) {
         params.extra_context[el.first] = json::parse(el.second);
     }
+    if (!inputs.reasoning_effort.empty()) {
+        params.extra_context["reasoning_effort"] = inputs.reasoning_effort;
+    }
 
     if (!inputs.json_schema.empty()) {
         params.json_schema = json::parse(inputs.json_schema);
