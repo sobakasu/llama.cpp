@@ -901,56 +901,14 @@ static void handle_media(
     }
 }
 
-// used by /chat/completions endpoint
-json oaicompat_chat_params_parse(
+common_chat_templates_inputs oaicompat_body_to_inputs(
     json & body, /* openai api json semantics */
     const server_chat_params & opt,
-    std::vector<raw_buffer> & out_files)
+    std::vector<raw_buffer> & out_files,
+    const std::map<std::string, bool> * caps)
 {
-    json llama_params;
-
     auto tools = json_value(body, "tools", json());
-    auto has_tools = tools.is_array() && !tools.empty();
-    auto stream = json_value(body, "stream", false);
     auto tool_choice = json_value(body, "tool_choice", std::string("auto"));
-
-    if (!opt.use_jinja) {
-        if (has_tools) {
-            throw std::runtime_error("tools param requires --jinja flag");
-        }
-        if (tool_choice != "auto") {
-            throw std::runtime_error("tool_choice param requires --jinja flag");
-        }
-    }
-
-    // Handle "stop" field
-    if (body.contains("stop") && body.at("stop").is_string()) {
-        llama_params["stop"] = json::array({body.at("stop").get<std::string>()});
-    } else {
-        llama_params["stop"] = json_value(body, "stop", json::array());
-    }
-
-    auto json_schema = json_value(body, "json_schema", json());
-    auto grammar = json_value(body, "grammar", std::string());
-    if (!json_schema.is_null() && !grammar.empty()) {
-        throw std::runtime_error("Cannot use both json_schema and grammar");
-    }
-
-    // Handle "response_format" field
-    if (body.contains("response_format")) {
-        json response_format      = json_value(body, "response_format", json::object());
-        std::string response_type = json_value(response_format, "type", std::string());
-        if (response_type == "json_object") {
-            if (response_format.contains("schema") || json_schema.empty()) {
-                json_schema = json_value(response_format, "schema", json::object());
-            }
-        } else if (response_type == "json_schema") {
-            auto schema_wrapper = json_value(response_format, "json_schema", json::object());
-            json_schema = json_value(schema_wrapper, "schema", json::object());
-        } else if (!response_type.empty() && response_type != "text") {
-            throw std::invalid_argument("response_format type must be one of \"text\" or \"json_object\", but got: " + response_type);
-        }
-    }
 
     // get input files
     if (!body.contains("messages")) {
@@ -1032,7 +990,27 @@ json oaicompat_chat_params_parse(
         }
     }
 
-    auto caps = common_chat_templates_get_caps(opt.tmpls.get());
+    auto json_schema = json_value(body, "json_schema", json());
+    auto grammar = json_value(body, "grammar", std::string());
+    if (!json_schema.is_null() && !grammar.empty()) {
+        throw std::runtime_error("Cannot use both json_schema and grammar");
+    }
+
+    // Handle "response_format" field
+    if (body.contains("response_format")) {
+        json response_format      = json_value(body, "response_format", json::object());
+        std::string response_type = json_value(response_format, "type", std::string());
+        if (response_type == "json_object") {
+            if (response_format.contains("schema") || json_schema.empty()) {
+                json_schema = json_value(response_format, "schema", json::object());
+            }
+        } else if (response_type == "json_schema") {
+            auto schema_wrapper = json_value(response_format, "json_schema", json::object());
+            json_schema = json_value(schema_wrapper, "schema", json::object());
+        } else if (!response_type.empty() && response_type != "text") {
+            throw std::invalid_argument("response_format type must be one of \"text\" or \"json_object\", but got: " + response_type);
+        }
+    }
 
     common_chat_templates_inputs inputs;
     inputs.messages               = common_chat_msgs_parse_oaicompat(messages);
@@ -1041,7 +1019,7 @@ json oaicompat_chat_params_parse(
     inputs.json_schema            = json_schema.is_null() ? "" : json_schema.dump();
     inputs.grammar                = grammar;
     inputs.use_jinja              = opt.use_jinja;
-    inputs.parallel_tool_calls    = json_value(body, "parallel_tool_calls", caps["supports_parallel_tool_calls"]);
+    inputs.parallel_tool_calls    = json_value(body, "parallel_tool_calls", caps ? caps->at("supports_parallel_tool_calls") : false);
     inputs.add_generation_prompt  = json_value(body, "add_generation_prompt", true);
     inputs.continue_final_message = body.contains("continue_final_message") ?
         common_chat_continuation_parse(body.at("continue_final_message")) :
@@ -1066,7 +1044,6 @@ json oaicompat_chat_params_parse(
         if (body.contains("grammar")) {
             throw std::invalid_argument("Cannot use custom grammar constraints with tools.");
         }
-        llama_params["parse_tool_calls"] = true;
     }
 
     // merge the template args provided from command line with the args provided in the user request
@@ -1107,6 +1084,42 @@ json oaicompat_chat_params_parse(
     }
 
     inputs.force_pure_content = opt.force_pure_content;
+
+    return inputs;
+}
+
+// used by /chat/completions endpoint
+json oaicompat_chat_params_parse(
+    json & body, /* openai api json semantics */
+    const server_chat_params & opt,
+    std::vector<raw_buffer> & out_files)
+{
+    json llama_params;
+
+    auto caps = common_chat_templates_get_caps(opt.tmpls.get());
+    auto inputs = oaicompat_body_to_inputs(body, opt, out_files, &caps);
+
+    auto stream = json_value(body, "stream", false);
+
+    // Handle "stop" field
+    if (body.contains("stop") && body.at("stop").is_string()) {
+        llama_params["stop"] = json::array({body.at("stop").get<std::string>()});
+    } else {
+        llama_params["stop"] = json_value(body, "stop", json::array());
+    }
+
+    if (!opt.use_jinja) {
+        if (!inputs.tools.empty()) {
+            throw std::runtime_error("tools param requires --jinja flag");
+        }
+        if (inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_AUTO) {
+            throw std::runtime_error("tool_choice param requires --jinja flag");
+        }
+    }
+
+    if (!inputs.tools.empty() && inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_NONE) {
+        llama_params["parse_tool_calls"] = true;
+    }
 
     // Apply chat template to the list of messages
     auto chat_params = common_chat_templates_apply(opt.tmpls.get(), inputs);
@@ -1155,7 +1168,7 @@ json oaicompat_chat_params_parse(
     // Handle "logprobs" field
     // TODO: The response format of this option is not yet OAI-compatible, but seems like no one really using it; We may need to fix it in the future
     if (json_value(body, "logprobs", false)) {
-        if (has_tools && stream) {
+        if (!inputs.tools.empty() && stream) {
             throw std::invalid_argument("logprobs is not supported with tools + stream");
         }
         llama_params["n_probs"] = json_value(body, "top_logprobs", 20);

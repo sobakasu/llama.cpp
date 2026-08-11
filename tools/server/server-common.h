@@ -318,6 +318,12 @@ json oaicompat_chat_params_parse(
     const server_chat_params & opt,
     std::vector<raw_buffer> & out_files);
 
+common_chat_templates_inputs oaicompat_body_to_inputs(
+    json & body,
+    const server_chat_params & opt,
+    std::vector<raw_buffer> & out_files,
+    const std::map<std::string, bool> * caps = nullptr);
+
 // TODO: move it to server-task.cpp
 json format_embeddings_response_oaicompat(
     const json & request,

@@ -6955,6 +6955,51 @@ static void test_reasoning_budget_message_per_request() {
     }
 }
 
+static void test_reasoning_effort_server_parsing() {
+    LOG_DBG("%s\n", __func__);
+
+    server_chat_params opt;
+    opt.use_jinja = true;
+    opt.enable_thinking = true;
+    opt.reasoning_format = COMMON_REASONING_FORMAT_NONE;
+
+    // top-level reasoning_effort
+    {
+        json body = {
+            {"messages", json::array({json{{"role","user"},{"content","hi"}}})},
+            {"reasoning_effort","low"}
+        };
+        std::vector<raw_buffer> out;
+        auto inputs = oaicompat_body_to_inputs(body, opt, out);
+        assert_equals(std::string("low"), inputs.reasoning_effort);
+        assert_equals(true, inputs.enable_thinking);
+    }
+
+    // nested reasoning.effort fallback
+    {
+        json body = {
+            {"messages", json::array({json{{"role","user"},{"content","hi"}}})},
+            {"reasoning", {{"effort","high"}}}
+        };
+        std::vector<raw_buffer> out;
+        auto inputs = oaicompat_body_to_inputs(body, opt, out);
+        assert_equals(std::string("high"), inputs.reasoning_effort);
+    }
+
+    // reasoning_effort = "none" disables thinking
+    {
+        json body = {
+            {"messages", json::array({json{{"role","user"},{"content","hi"}}})},
+            {"reasoning_effort","none"}
+        };
+        std::vector<raw_buffer> out;
+        auto inputs = oaicompat_body_to_inputs(body, opt, out);
+        assert_equals(false, inputs.enable_thinking);
+        // The reasoning effort is only injected into the Jinja context when it is non-empty
+        assert_equals(std::string(""), inputs.reasoning_effort);
+    }
+}
+
 static void test_reasoning_effort_extra_context() {
     LOG_DBG("%s\n", __func__);
 
@@ -7178,6 +7223,7 @@ int main(int argc, char ** argv) {
         test_deepseek_v4_thinking_retention();
         test_deepseek_v4_tool_result_ordering();
         test_template_generation_prompt();
+        test_reasoning_effort_server_parsing();
         test_reasoning_effort_extra_context();
         test_reasoning_budget_tokens_per_request();
         test_reasoning_budget_message_per_request();
